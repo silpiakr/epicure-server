@@ -33,12 +33,64 @@ async function run() {
         const purchaseCollection = client.db('epicureFoods').collection('purchases');
         const myFoodCollection = client.db('epicureFoods').collection('myFoods');
 
-        // ,y foods api
+        // my foods api
+        // app.get('/myFoods', async (req, res) => {
+        //     const { email } = req.query;
+        //     const userFoods = await foodsCollection.find({ addedBy: email }).toArray();
+        //     // const cursor = myFoodCollection.find();
+        //     // const result = await cursor.toArray();
+        //     res.send(userFoods);
+        // });
+
         app.get('/myFoods', async (req, res) => {
-            const cursor = myFoodCollection.find();
-            const result = await cursor.toArray();
-            res.send(result);
-        })
+            const { email } = req.query;
+        
+            if (!email) {
+                return res.status(400).json({ message: 'Email is required' });
+            }
+        
+            try {
+                const userFoods = await foodsCollection.find({ addedBy: email }).toArray();
+                res.status(200).json(userFoods);
+            } catch (error) {
+                res.status(500).json({ message: 'Failed to fetch foods', error });
+            }
+        });
+        
+
+        app.put('/foods/:id/update', async (req, res) => {
+            const foodId = req.params.id;
+            const { name, price, quantity, category, origin, description, userEmail } = req.body;
+            const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
+            res.send(food);
+            
+            const result = await foodsCollection.updateOne(
+                { _id: new ObjectId(foodId) },
+                { $set: { name, price, quantity, category, origin, description } }
+            );
+        
+            // try {
+            //     const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
+        
+            //     if (!food) {
+            //         return res.status(404).json({ message: 'Food not found' });
+            //     }
+        
+            //     if (food.addedBy !== userEmail) {
+            //         return res.status(403).json({ message: 'Unauthorized to update this food item' });
+            //     }
+        
+            //     await foodsCollection.updateOne(
+            //         { _id: new ObjectId(foodId) },
+            //         { $set: { name, price, quantity, category, origin, description } }
+            //     );
+        
+            //     res.status(200).json({ message: 'Food updated successfully' });
+            // } catch (error) {
+            //     res.status(500).json({ message: 'Failed to update food', error });
+            // }
+        });
+        
 
 
 
