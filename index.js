@@ -31,19 +31,34 @@ async function run() {
         // foods
         const foodsCollection = client.db('epicureFoods').collection('foods');
         const purchaseCollection = client.db('epicureFoods').collection('purchases');
+        // const myFoodCollection = client.db('epicureFoods').collection('myFoods');
 
-        app.get('/foods', async (req, res) => {
-            const cursor = foodsCollection.find();
+        app.get('/myFoods', async (req, res) => {
+            const cursor = myFoodCollection.find();
             const result = await cursor.toArray();
             res.send(result);
-
         })
+
+
+
+        // app.get('/foods', async (req, res) => {
+        //     const cursor = foodsCollection.find();
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+
+        // })
 
         app.get('/foods/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
-            const result = await foodsCollection.findOne(query);
-            res.send(result);
+            const food = await foodsCollection.findOne(query);
+            // const result = await foodsCollection.findOne(query);
+            // res.send(result);
+
+            // Count purchases for this food item
+            const purchaseCount = await purchaseCollection.countDocuments({ foodName: food.name });
+        
+            res.send({ ...food, purchaseCount });
         })
 
         app.post('/foods', async (req, res) => {
@@ -80,7 +95,48 @@ async function run() {
             const query = { _id: new ObjectId(id) }
             const result = await purchaseCollection.findOne(query);
             res.send(result);
-        })
+        });
+
+        app.post('/foods/:id/purchase', async (req, res) => {
+            const foodId = req.params.id;
+            const { buyerName, buyerEmail, quantity } = req.body;
+        
+            try {
+                const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
+                if (!food) {
+                    return res.status(404).json({ message: 'Food not found' });
+                }
+        
+                // Check if enough quantity is available
+                if (food.quantity < quantity) {
+                    return res.status(400).json({ message: 'Not enough stock available' });
+                }
+        
+                // Decrease food quantity
+                await foodsCollection.updateOne(
+                    { _id: new ObjectId(foodId) },
+                    { $inc: { quantity: -quantity } }
+                );
+        
+                // Insert purchase record
+                const purchaseData = {
+                    foodName: food.name,
+                    price: food.price,
+                    quantity,
+                    buyerName,
+                    buyerEmail,
+                    buyingDate: new Date(),
+                };
+                const result = await purchaseCollection.insertOne(purchaseData);
+        
+                res.status(200).json({ message: 'Purchase successful!', purchaseData });
+            } catch (error) {
+                console.error('Error processing purchase:', error);
+                res.status(500).json({ message: 'Failed to process purchase', error });
+            }
+        });
+        
+        
 
         app.post('/purchases', async (req, res) => {
             const { foodName, price, quantity, buyerName, buyerEmail } = req.body;
