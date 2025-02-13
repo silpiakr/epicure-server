@@ -31,8 +31,9 @@ async function run() {
         // foods
         const foodsCollection = client.db('epicureFoods').collection('foods');
         const purchaseCollection = client.db('epicureFoods').collection('purchases');
-        // const myFoodCollection = client.db('epicureFoods').collection('myFoods');
+        const myFoodCollection = client.db('epicureFoods').collection('myFoods');
 
+        // ,y foods api
         app.get('/myFoods', async (req, res) => {
             const cursor = myFoodCollection.find();
             const result = await cursor.toArray();
@@ -41,12 +42,13 @@ async function run() {
 
 
 
-        // app.get('/foods', async (req, res) => {
-        //     const cursor = foodsCollection.find();
-        //     const result = await cursor.toArray();
-        //     res.send(result);
+        // foods api
+        app.get('/foods', async (req, res) => {
+            const cursor = foodsCollection.find();
+            const result = await cursor.toArray();
+            res.send(result);
 
-        // })
+        })
 
         app.get('/foods/:id', async (req, res) => {
             const id = req.params.id;
@@ -83,6 +85,7 @@ async function run() {
             }
         });
 
+        // purchase api
         app.get('/purchases', async (req, res) => {
             const cursor = purchaseCollection.find();
             const result = await cursor.toArray();
