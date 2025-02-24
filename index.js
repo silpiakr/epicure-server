@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 5000;
 require('dotenv').config()
@@ -8,7 +9,6 @@ app.use(cors());
 app.use(express.json());
 
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.anca8.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -31,119 +31,204 @@ async function run() {
         // foods
         const foodsCollection = client.db('epicureFoods').collection('foods');
         const purchaseCollection = client.db('epicureFoods').collection('purchases');
-        const myFoodCollection = client.db('epicureFoods').collection('myFoods');
+        // const myFoodCollection = client.db('epicureFoods').collection('myFoods');
+        const ordersCollection = client.db('epicureFoods').collection('orders');
 
-        // my foods api
-        // app.get('/myFoods', async (req, res) => {
-        //     const { email } = req.query;
-        //     const userFoods = await foodsCollection.find({ addedBy: email }).toArray();
-        //     // const cursor = myFoodCollection.find();
-        //     // const result = await cursor.toArray();
-        //     res.send(userFoods);
-        // });
+        app.get('/gallery', async (req, res) => {
+            let { page, limit } = req.query;
+        
+            page = parseInt(page) || 1; 
+            limit = parseInt(limit) || 12; 
+        
+            const skip = (page - 1) * limit;
+        
+            try {
+                const images = await foodsCollection.find({}, { projection: { image: 1 } })
+                    .skip(skip)
+                    .limit(limit)
+                    .toArray();
+        
+                const totalCount = await foodsCollection.countDocuments();
+        
+                res.json({
+                    images,
+                    currentPage: page,
+                    totalPages: Math.ceil(totalCount / limit),
+                    totalItems: totalCount
+                });
+            } catch (error) {
+                res.status(500).json({ message: "Failed to fetch images", error });
+            }
+        });
+        
+
+        // my orders
+        app.get("/orders", async (req, res) => {
+            const { email } = req.query;
+            if (!email) return res.status(400).json({ error: "Email is required" });
+
+            const orders = await ordersCollection.find({ buyerEmail: email }).toArray();
+            res.json(orders);
+        });
+
+        app.delete("/orders/:id", async (req, res) => {
+            const { id } = req.params;
+
+            try {
+                const result = await ordersCollection.deleteOne({ _id: new ObjectId(id) });
+                res.json({ success: result.deletedCount > 0 });
+            } catch (error) {
+                res.status(400).json({ error: "Invalid order ID" });
+            }
+            
+        });
 
         app.get('/myFoods', async (req, res) => {
-            const { email } = req.query;
+            const userEmail = req.query.email;
+
+            if (!userEmail) {
+                return res.status(400).json({ message: "Email is required" });
+            }
+
+            try {
+                const userFoods = await foodsCollection.find({ addedBy: userEmail }).toArray();
+
+                res.status(200).json(userFoods);
+                
+            } catch (error) {
+                res.status(500).json({ message: "Failed to fetch foods", error });
+            }
+        });
+
+        app.put('/foods/:id', async (req, res) => {
+            const { id } = req.params;
+            const updatedFood = req.body;
         
-            if (!email) {
-                return res.status(400).json({ message: 'Email is required' });
+            if (!id || !updatedFood) {
+                return res.status(400).json({ error: "Invalid request. Missing ID or data." });
             }
         
             try {
-                const userFoods = await foodsCollection.find({ addedBy: email }).toArray();
-                res.status(200).json(userFoods);
+                const result = await foodsCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: updatedFood }
+                );
+        
+                if (result.modifiedCount > 0) {
+                    res.json({ message: "Food updated successfully" });
+                } else {
+                    res.status(404).json({ error: "Food not found or no changes made." });
+                }
             } catch (error) {
-                res.status(500).json({ message: 'Failed to fetch foods', error });
+                res.status(500).json({ error: "Internal Server Error" });
             }
         });
         
 
-        app.put('/foods/:id/update', async (req, res) => {
-            const foodId = req.params.id;
-            const { name, price, quantity, category, origin, description, userEmail } = req.body;
-            const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
-            res.send(food);
-            
-            const result = await foodsCollection.updateOne(
-                { _id: new ObjectId(foodId) },
-                { $set: { name, price, quantity, category, origin, description } }
-            );
+        app.get('/topSelling', async (req, res) => {
+            try {
+                const topSellingProducts = await foodsCollection.find({})
+                    .sort({ salesCount: -1 }) 
+                    .limit(6)
+                    .toArray();
         
-            // try {
-            //     const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
-        
-            //     if (!food) {
-            //         return res.status(404).json({ message: 'Food not found' });
-            //     }
-        
-            //     if (food.addedBy !== userEmail) {
-            //         return res.status(403).json({ message: 'Unauthorized to update this food item' });
-            //     }
-        
-            //     await foodsCollection.updateOne(
-            //         { _id: new ObjectId(foodId) },
-            //         { $set: { name, price, quantity, category, origin, description } }
-            //     );
-        
-            //     res.status(200).json({ message: 'Food updated successfully' });
-            // } catch (error) {
-            //     res.status(500).json({ message: 'Failed to update food', error });
-            // }
+                res.json(topSellingProducts);
+            } catch (error) {
+                res.status(500).json({ message: "Failed to fetch top-selling products", error });
+            }
         });
         
-
-
-
-        // foods api
+        
+        app.get('/gallery', async (req, res) => {
+            let { page, limit } = req.query;
+        
+            page = parseInt(page) || 1; 
+            limit = parseInt(limit) || 12; 
+        
+            const skip = (page - 1) * limit;
+        
+            try {
+                const images = await foodsCollection.find({}, { projection: { image: 1 } })
+                    .skip(skip)
+                    .limit(limit)
+                    .toArray();
+        
+                const totalCount = await foodsCollection.countDocuments();
+        
+                res.json({
+                    images,
+                    currentPage: page,
+                    totalPages: Math.ceil(totalCount / limit),
+                    totalItems: totalCount
+                });
+            } catch (error) {
+                res.status(500).json({ message: "Failed to fetch images", error });
+            }
+        });
+        
+        
         app.get('/foods', async (req, res) => {
             const cursor = foodsCollection.find();
             const result = await cursor.toArray();
             res.send(result);
 
-        })
+        });
+
+        app.get("/foods", async (req, res) => {
+            try {
+                const sellerEmail = req.query.sellerEmail;
+                if (!sellerEmail) {
+                    return res.status(400).json({ success: false, message: "Seller email is required" });
+                }
+        
+                const foods = await foodsCollection.find({ sellerEmail }).toArray();
+                res.json(foods);
+            } catch (error) {
+                res.status(500).json({ success: false, message: "Server error" });
+            }
+        });
+        
 
         app.get('/foods/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
             const food = await foodsCollection.findOne(query);
-            // const result = await foodsCollection.findOne(query);
-            // res.send(result);
 
-            // Count purchases for this food item
             const purchaseCount = await purchaseCollection.countDocuments({ foodName: food.name });
-        
+
             res.send({ ...food, purchaseCount });
         })
 
+
         app.post('/foods', async (req, res) => {
             const { name, image, category, quantity, price, addedBy, origin, description } = req.body;
-        
+
+            if (!name || !image || !category || !quantity || !price || !addedBy || !origin || !description) {
+                return res.status(400).json({ message: 'All fields are required' });
+            }
+
             try {
-                const newFood = new Item({
+                const newFood = {
                     name,
                     image,
                     category,
-                    quantity,
-                    price,
-                    addedBy, 
+                    quantity: parseInt(quantity),
+                    price: parseFloat(price),
+                    addedBy,
                     origin,
                     description,
-                });
-        
-                const savedFood = await newFood.save();
-                res.status(201).json(savedFood);
+                    createdAt: new Date(),
+                };
+
+                const result = await foodsCollection.insertOne(newFood);
+                res.status(201).json({ message: 'Food item added successfully!', food: newFood });
             } catch (error) {
-                res.status(500).json({ message: 'Error adding food item', error });
+                res.status(500).json({ message: 'Failed to add food item', error });
             }
         });
 
-        // purchase api
-        app.get('/purchases', async (req, res) => {
-            const cursor = purchaseCollection.find();
-            const result = await cursor.toArray();
-            res.send(result);
 
-        })
+        // purchase api
 
         app.get('/purchases/:id', async (req, res) => {
             const id = req.params.id;
@@ -152,46 +237,86 @@ async function run() {
             res.send(result);
         });
 
-        app.post('/foods/:id/purchase', async (req, res) => {
-            const foodId = req.params.id;
-            const { buyerName, buyerEmail, quantity } = req.body;
-        
+        app.get("/purchases", async (req, res) => {
             try {
-                const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
-                if (!food) {
-                    return res.status(404).json({ message: 'Food not found' });
+                const { email } = req.query; 
+                if (!email) {
+                    return res.status(400).json({ success: false, message: "Email is required" });
                 }
         
-                // Check if enough quantity is available
-                if (food.quantity < quantity) {
-                    return res.status(400).json({ message: 'Not enough stock available' });
-                }
-        
-                // Decrease food quantity
-                await foodsCollection.updateOne(
-                    { _id: new ObjectId(foodId) },
-                    { $inc: { quantity: -quantity } }
-                );
-        
-                // Insert purchase record
-                const purchaseData = {
-                    foodName: food.name,
-                    price: food.price,
-                    quantity,
-                    buyerName,
-                    buyerEmail,
-                    buyingDate: new Date(),
-                };
-                const result = await purchaseCollection.insertOne(purchaseData);
-        
-                res.status(200).json({ message: 'Purchase successful!', purchaseData });
+                const purchases = await purchaseCollection.find({ buyerEmail: email }).toArray();
+                res.json({ success: true, data: purchases });
             } catch (error) {
-                console.error('Error processing purchase:', error);
-                res.status(500).json({ message: 'Failed to process purchase', error });
+                res.status(500).json({ success: false, message: "Server error" });
+            }
+        });
+        
+
+        app.post('/purchase', async (req, res) => {
+            try {
+                console.log("📩 Received purchase request:", req.body);
+        
+                const { foodId, foodName, price, quantity, buyerEmail, date } = req.body;
+        
+                if (!foodId || !foodName || !price || !quantity || !buyerEmail || !date) {
+                    console.log("❌ Missing required fields:", req.body);
+                    return res.status(400).json({ success: false, message: "All fields are required" });
+                }
+        
+                if (isNaN(price) || isNaN(quantity)) {
+                    console.log("❌ Invalid data types:", { price, quantity });
+                    return res.status(400).json({ success: false, message: "Price and quantity must be numbers" });
+                }
+        
+                const result = await purchaseCollection.insertOne(req.body);
+                res.status(201).json({ success: true, message: "Purchase successful!", data: result });
+        
+            } catch (error) {
+                console.error("🚨 Server Error:", error);
+                res.status(500).json({ success: false, message: "Internal Server Error", error });
             }
         });
         
         
+        
+        // app.post('/foods/:id/purchase', async (req, res) => {
+        //     const { id } = req.params;  // Food ID
+        //     const { foodName, price, quantity, buyerName, buyerEmail, buyingDate } = req.body;
+
+        //     // Validate input (you can add more validation)
+        //     if (!foodName || !price || !quantity || !buyerName || !buyerEmail) {
+        //         return res.status(400).json({ error: "Missing required fields" });
+        //     }
+
+        //     try {
+        //         // Process the purchase (e.g., save purchase data to a database)
+        //         const purchase = {
+        //             foodId: id,
+        //             foodName,
+        //             price,
+        //             quantity,
+        //             buyerName,
+        //             buyerEmail,
+        //             buyingDate,
+        //         };
+
+        //         // Insert purchase into database (example)
+        //         await purchaseCollection.create(purchase);  // Assuming you have a Purchase model
+
+        //         // Optionally update food purchase count
+        //         await foodsCollection.updateOne(
+        //             { _id: new ObjectId(id) },
+        //             { $inc: { purchaseCount: quantity, quantity: -quantity }  }
+        //           );
+                  
+
+        //         res.status(200).json({ message: "Purchase successful!" });
+        //     } catch (error) {
+        //         console.error("Error processing purchase:", error);
+        //         res.status(500).json({ error: "Failed to process purchase" });
+        //     }
+        // });
+
 
         app.post('/purchases', async (req, res) => {
             const { foodName, price, quantity, buyerName, buyerEmail } = req.body;
@@ -202,10 +327,10 @@ async function run() {
                 buyerName,
                 buyerEmail,
                 buyingDate: Date.now(),
-              };
+            };
             const result = await purchaseCollection.insertOne(purchaseData);
             res.send(result);
-            
+
         });
 
 
